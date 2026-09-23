@@ -13,6 +13,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
 
+import com.proyecto.servicios.entity.gestopago.GestoPagoProducto;
+import com.proyecto.servicios.repository.gestopago.GestoPagoProductoRepository;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * Implementación del servicio de catálogo de productos GestoPago.
  * <p>
@@ -28,6 +34,7 @@ public class ProductoServiceImpl implements ProductoService {
 
     private final GestoPagoProductClient gestoPagoProductClient;
     private final GestoPagoTokenService gestoPagoTokenService;
+    private final GestoPagoProductoRepository productoRepository;
 
     @Value("${gestopago.service.id-distribuidor}")
     private Integer idDistribuidor;
@@ -36,9 +43,11 @@ public class ProductoServiceImpl implements ProductoService {
     private String codigoDispositivo;
 
     public ProductoServiceImpl(GestoPagoProductClient gestoPagoProductClient,
-                               GestoPagoTokenService gestoPagoTokenService) {
+                               GestoPagoTokenService gestoPagoTokenService,
+                               GestoPagoProductoRepository productoRepository) {
         this.gestoPagoProductClient = gestoPagoProductClient;
         this.gestoPagoTokenService = gestoPagoTokenService;
+        this.productoRepository = productoRepository;
     }
 
     /**
@@ -71,6 +80,31 @@ public class ProductoServiceImpl implements ProductoService {
                         "El servicio externo no retornó contenido.",
                         HttpStatus.BAD_GATEWAY.value()
                 );
+            }
+
+            if (response.getDatos() != null && !response.getDatos().isEmpty()) {
+                // 1. Limpiamos la tabla primero para evitar acumular basura o conflictos de actualización
+                productoRepository.deleteAllInBatch();
+
+                // 2. Mapeamos la lista completa. 
+                // Usamos UUID.randomUUID() como ID primario porque si la API de GestoPago 
+                // devuelve IDs nulos o duplicados (ej. idproducto="0" para todos), JPA sobrescribirá 
+                // el mismo registro 901 veces y solo guardará 1.
+                List<GestoPagoProducto> entidades = response.getDatos().stream()
+                        .map(item -> GestoPagoProducto.builder()
+                                .id(java.util.UUID.randomUUID().toString()) // ID único garantizado
+                                .nombre(item.getNombre())
+                                .descripcion(item.getDescripcion())
+                                .precio(item.getPrecio())
+                                .categoria(item.getCategoria())
+                                .disponible(item.getDisponible() != null ? item.getDisponible() : true)
+                                .fechaActualizacion(LocalDateTime.now())
+                                .build())
+                        .collect(Collectors.toList());
+                
+                // 3. Guardamos la lista masivamente
+                productoRepository.saveAll(entidades);
+                log.info("Persistidos {} productos en la base de datos PostgreSQL.", entidades.size());
             }
 
             log.info("Consulta de lista de productos GestoPago finalizada. totalProductos={}",

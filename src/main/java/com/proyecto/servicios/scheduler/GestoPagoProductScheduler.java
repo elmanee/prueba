@@ -21,9 +21,10 @@ public class GestoPagoProductScheduler {
     public void sincronizarCatalogoProductos() {
         log.info("Iniciando tarea programada: Sincronización de catálogo de productos GestoPago...");
         try {
-            // Lógica de sincronización delegada al servicio
-            // Ejemplo: productoService.sincronizarProductos();
-            log.info("Tarea programada de sincronización finalizada con éxito.");
+            // Llamada al servicio que ahora está cacheado y consume la API
+            var productos = productoService.obtenerListaProductos();
+            log.info("Tarea programada finalizada con éxito. Productos procesados/cacheados: {}",
+                    (productos != null && productos.getDatos() != null) ? productos.getDatos().size() : 0);
         } catch (Exception e) {
             log.error("Error durante la sincronización del catálogo de productos: {}", e.getMessage(), e);
         }
