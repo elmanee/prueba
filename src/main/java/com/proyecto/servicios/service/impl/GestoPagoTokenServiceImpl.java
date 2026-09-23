@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import java.util.Optional;
 
 @Service
@@ -40,6 +42,7 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
 
     @Override
     @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 0)
+    @CacheEvict(value = "gestopagoToken", allEntries = true)
     public void renovarToken() {
         log.info("Renovando token GestoPago para distribuidor={}", idDistribuidor);
         try {
@@ -74,6 +77,7 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     }
 
     @Override
+    @Cacheable(value = "gestopagoToken", key = "#idDistribuidor + '-' + #codigoDispositivo", unless = "#result == null")
     public Optional<GestoPagoToken> obtenerTokenActivo(Integer idDistribuidor, String codigoDispositivo) {
         return tokenRepository.findByIdDistribuidorAndCodigoDispositivo(idDistribuidor, codigoDispositivo);
     }

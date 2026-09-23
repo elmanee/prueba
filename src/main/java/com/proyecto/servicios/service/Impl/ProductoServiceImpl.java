@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 
 /**
  * Implementación del servicio de catálogo de productos GestoPago.
@@ -52,6 +53,7 @@ public class ProductoServiceImpl implements ProductoService {
      *                                     autenticación o timeout
      */
     @Override
+    @Cacheable(value = "productosGestoPago", unless = "#result == null")
     public ProductListResponse obtenerListaProductos() {
         log.info("Iniciando consulta de lista de productos GestoPago. distribuidor={}",
                 idDistribuidor);
