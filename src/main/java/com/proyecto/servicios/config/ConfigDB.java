@@ -27,8 +27,7 @@ import java.util.Map;
 @EnableTransactionManagement
 @EnableJpaRepositories(
         basePackages = {
-                "com.proyecto.servicios.repository.sf",
-                "com.proyecto.servicios.repository.gestopago"
+                "com.proyecto.servicios.repository"
         },
         transactionManagerRef = "sfTransactionManager",
         entityManagerFactoryRef = "sfEntityManagerFactory"
@@ -66,8 +65,7 @@ public class ConfigDB {
         try{
           em.setDataSource(sfDatasource());
           em.setPackagesToScan(
-                  "com.proyecto.servicios.entity.sf",
-                  "com.proyecto.servicios.entity.gestopago"
+                  "com.proyecto.servicios.entity"
           );
           em.setPersistenceUnitName("sfDatasource");
             HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
@@ -92,4 +90,8 @@ public class ConfigDB {
 
  }
 
+    @Bean
+    public org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
+        return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+    }
 }
