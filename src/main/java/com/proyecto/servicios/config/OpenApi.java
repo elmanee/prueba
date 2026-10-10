@@ -1,12 +1,22 @@
 package com.proyecto.servicios.config;
 
-import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.servers.Server;
-import org.springframework.context.annotation.Bean;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import org.springframework.context.annotation.Configuration;
 
+@Configuration
+@OpenAPIDefinition(
+        info = @Info(title = "API Onboarding Clientes", version = "v1.0", description = "Documentación de endpoints"),
+        security = @SecurityRequirement(name = "bearerAuth")
+)
+@SecurityScheme(
+        name = "bearerAuth",
+        type = SecuritySchemeType.HTTP,
+        scheme = "bearer",
+        bearerFormat = "JWT"
+)
 public class OpenApi {
-    @Bean
-    public OpenAPI openAPI(){
-        return new OpenAPI().addServersItem(new Server().url("http://localhost:8081"));
-    }
 }
