@@ -14,6 +14,25 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ProductListResponse {
 
+    // Explicit setters for test usage
+    public void setCodigo(Integer codigo) {
+        this.codigo = codigo;
+    }
+
+    public void setMensaje(String mensaje) {
+        this.mensaje = mensaje;
+    }
+
+    public void setDatos(List<ProductoItem> datos) {
+        this.datos = datos;
+    }
+
+    @JsonProperty("codigo")
+    private Integer codigo;
+
+    @JsonProperty("mensaje")
+    private String mensaje;
+
     @JsonProperty("mensaje")
     private MensajeGestoPago mensajeObj;
 
@@ -25,15 +44,21 @@ public class ProductListResponse {
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public Integer getCodigo() {
+        if (codigo != null) {
+            return codigo;
+        }
         try {
             return mensajeObj != null && mensajeObj.getCodigo() != null ? Integer.parseInt(mensajeObj.getCodigo()) : 0;
-        } catch(NumberFormatException e) {
+        } catch (NumberFormatException e) {
             return 0;
         }
     }
 
     @com.fasterxml.jackson.annotation.JsonIgnore
     public String getMensaje() {
+        if (mensaje != null) {
+            return mensaje;
+        }
         return mensajeObj != null ? mensajeObj.getTexto() : "";
     }
 

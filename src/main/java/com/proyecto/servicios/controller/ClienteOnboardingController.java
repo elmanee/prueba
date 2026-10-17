@@ -10,6 +10,7 @@ import com.proyecto.servicios.exception.CuentaNoEncontradaException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -26,7 +27,7 @@ public class ClienteOnboardingController {
     private final CuentaRepository cuentaRepository;
 
     @PostMapping("/clientes")
-    public ResponseEntity<Cliente> registrar(@jakarta.validation.Valid @RequestBody ClienteRegistroDTO dto) {
+    public ResponseEntity<Cliente> registrar(@Valid @RequestBody ClienteRegistroDTO dto) {
         return new ResponseEntity<>(clienteService.registrarCliente(dto), HttpStatus.CREATED);
     }
 
@@ -86,7 +87,7 @@ public class ClienteOnboardingController {
     }
 
     @PutMapping("/clientes/{id}")
-    public ResponseEntity<Cliente> actualizarCliente(@PathVariable Long id, @jakarta.validation.Valid @RequestBody ClienteUpdateDTO dto) {
+    public ResponseEntity<Cliente> actualizarCliente(@PathVariable Long id, @Valid @RequestBody ClienteUpdateDTO dto) {
         return ResponseEntity.ok(clienteService.actualizarCliente(id, dto));
     }
 }

@@ -1,5 +1,7 @@
 package com.proyecto.servicios.service.dto;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.time.LocalDate;
 
@@ -10,6 +12,8 @@ public class ClienteRegistroDTO {
     private String curp;
     private String rfc;
     private LocalDate fechaNacimiento;
+    @NotBlank(message = "El correo es obligatorio")
+    @Email(message = "El formato del correo no es válido")
     private String correo;
     private String rawPassword;
 }

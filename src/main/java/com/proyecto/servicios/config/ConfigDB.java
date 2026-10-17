@@ -65,6 +65,7 @@ public class ConfigDB {
         try{
           em.setDataSource(sfDatasource());
           em.setPackagesToScan(
+                  "com.proyecto.servicios.model",
                   "com.proyecto.servicios.entity"
           );
           em.setPersistenceUnitName("sfDatasource");
