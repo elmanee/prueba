@@ -3,6 +3,7 @@ package com.proyecto.servicios.controller;
 import com.proyecto.servicios.config.JwtTokenProvider;
 import com.proyecto.servicios.dto.AuthDTO;
 import com.proyecto.servicios.dto.AuthResponseDTO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,7 +21,7 @@ public class AuthController {
     private final JwtTokenProvider tokenProvider;
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponseDTO> authenticateUser(@RequestBody AuthDTO authDTO) {
+    public ResponseEntity<AuthResponseDTO> authenticateUser(@Valid @RequestBody AuthDTO authDTO) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         authDTO.getCorreo(),

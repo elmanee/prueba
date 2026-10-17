@@ -1,48 +1,54 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.entity.Usuario;
-import com.proyecto.servicios.exception.UsuarioNoEncontradoException;
-import com.proyecto.servicios.repository.UsuarioRepository;
+import com.proyecto.servicios.dto.CambioPasswordRequestDTO;
+import com.proyecto.servicios.dto.UsuarioResponseDTO;
+import com.proyecto.servicios.dto.UsuarioSearchRequestDTO;
+import com.proyecto.servicios.service.UsuarioService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.List;
 
+/**
+ * Controlador REST para la administración de usuarios.
+ *
+ * <p>Restricciones aplicadas:</p>
+ * <ul>
+ *   <li>No se usa {@code @PathVariable}.</li>
+ *   <li>No se usa {@code @RequestParam}.</li>
+ *   <li>Los criterios de búsqueda se reciben por {@code @RequestBody}.</li>
+ *   <li>No se devuelven entidades JPA; solo DTOs de respuesta.</li>
+ *   <li>No hay validaciones manuales en el controlador; se usan anotaciones Bean Validation.</li>
+ *   <li>No hay bloques try-catch; el manejo de errores está en {@link com.proyecto.servicios.exception.GlobalExceptionHandler}.</li>
+ * </ul>
+ */
 @RestController
-@RequestMapping("/usuarios")
+@RequestMapping("/api/v1/usuarios")
 @RequiredArgsConstructor
 public class UsuarioController {
 
-    private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final UsuarioService usuarioService;
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Usuario> obtenerUsuario(@PathVariable Long id) {
-        Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new UsuarioNoEncontradoException("Usuario no encontrado"));
-        return ResponseEntity.ok(usuario);
+    /**
+     * POST /api/v1/usuarios/buscar
+     * Busca usuarios por criterios dinámicos combinables.
+     * Todos los campos del DTO son opcionales; al enviar {} retorna todos.
+     */
+    @PostMapping("/buscar")
+    public ResponseEntity<List<UsuarioResponseDTO>> buscar(@RequestBody UsuarioSearchRequestDTO filtros) {
+        return ResponseEntity.ok(usuarioService.buscar(filtros));
     }
 
-    @PutMapping("/{id}/password")
-    public ResponseEntity<Void> cambiarPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new UsuarioNoEncontradoException("Usuario no encontrado"));
-        
-        String newPassword = body.get("password");
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new IllegalArgumentException("La contraseña no puede estar vacía");
-        }
-        
-        String passwordRegex = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$";
-        if (!newPassword.matches(passwordRegex)) {
-            throw new IllegalArgumentException("La contraseña debe tener mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial.");
-        }
-        
-        usuario.setPasswordHash(passwordEncoder.encode(newPassword));
-        usuarioRepository.save(usuario);
-        
+    /**
+     * PUT /api/v1/usuarios/cambiar-password
+     * Cambia la contraseña del usuario identificado por correo.
+     * Las validaciones de formato se ejecutan mediante @Valid y Bean Validation.
+     */
+    @PutMapping("/cambiar-password")
+    public ResponseEntity<Void> cambiarPassword(@Valid @RequestBody CambioPasswordRequestDTO req) {
+        usuarioService.cambiarPassword(req);
         return ResponseEntity.noContent().build();
     }
 }
