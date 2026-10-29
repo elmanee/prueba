@@ -60,7 +60,7 @@ public class GlobalExceptionHandler {
     // -------------------------------------------------------------------------
 
     @ExceptionHandler({CurpDuplicadaException.class, RfcDuplicadaException.class,
-            ClienteYaRegistradoException.class})
+            ClienteYaRegistradoException.class, TransaccionDuplicadaException.class})
     public ResponseEntity<ErrorResponse> handleConflicto(RuntimeException ex) {
         ErrorResponse error = new ErrorResponse(
                 LocalDateTime.now(),
@@ -69,6 +69,17 @@ public class GlobalExceptionHandler {
                 ex.getMessage()
         );
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler({SaldoInsuficienteException.class, CuentaInactivaException.class, ProductoInvalidoException.class})
+    public ResponseEntity<ErrorResponse> handleNegocioCuentas(RuntimeException ex) {
+        ErrorResponse error = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                "Operación no permitida",
+                ex.getMessage()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
     // -------------------------------------------------------------------------
@@ -85,6 +96,17 @@ public class GlobalExceptionHandler {
                 "Credenciales inválidas o usuario inactivo"
         );
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
+    @ExceptionHandler({AccesoDenegadoException.class, org.springframework.security.access.AccessDeniedException.class})
+    public ResponseEntity<ErrorResponse> handleAccesoDenegado(RuntimeException ex) {
+        ErrorResponse error = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
+                "Acceso denegado",
+                ex.getMessage() != null ? ex.getMessage() : "No tiene los permisos requeridos para esta operación"
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
     }
 
     // -------------------------------------------------------------------------

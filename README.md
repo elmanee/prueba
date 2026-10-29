@@ -146,4 +146,113 @@ El sistema cumple con el 100% de las validaciones solicitadas:
         ![alt text](image-6.png)
 
 ---
+
+# Módulo 3: Integración de Pagos de Servicios (GestoPago sendTx.do)
+
+## 1. Descripción de la Solución Transaccional
+Este módulo orquesta el ciclo de vida completo del pago de servicios y recargas electrónicas mediante la pasarela externa **GestoPago** (`POST /sistema/service/sendTx.do`).
+Asegura la protección del saldo del cliente, previene duplicados e inconsistencias por caídas de red, y garantiza la trazabilidad bancaria de punta a punta.
+
+## 2. Flujo de Operación y Arquitectura
+1. **Autenticación y Autorización del Cliente:** La ruta `/api/v1/servicios/**` requiere autenticación JWT. Se valida que el cliente titular de la cuenta esté activo y que el usuario autenticado en `SecurityContextHolder` tenga autorización para operar la cuenta bancaria origen.
+2. **Validación de Catálogo y Parámetros:** Se verifica que el producto exista, esté disponible, y que su categoría coincida con el `idServicio`. Si el producto tiene precio fijo, se valida estrictamente contra el monto enviado.
+3. **Idempotencia y Prevención de Doble Clic:**
+   - Se valida la clave única de idempotencia `referenciaCliente` (o UUID asignado).
+   - Se comprueba una ventana temporal de 60 segundos en base de datos para bloquear ráfagas accidentales (doble clic) sobre el mismo servicio.
+4. **Control de Concurrencia y Débito Preventivo (Hold-and-Settle):**
+   - Se aplica `LockModeType.PESSIMISTIC_WRITE` (`SELECT FOR UPDATE`) sobre la cuenta.
+   - Se verifica saldo suficiente y se realiza el débito preventivo registrando la transacción en estado `PENDIENTE`.
+5. **Comunicación Externa con GestoPago:**
+   - Invocación con `GestoPagoTxClient` mediante Bearer Token inyectado dinámicamente.
+   - Si la respuesta es exitosa (`codigo: 0` o `status: SUCCESS`), se asienta el estado `EXITOSA` y se almacena el folio del proveedor (`201 Created`).
+   - Si el proveedor rechaza la operación, se marca como `FALLIDA` y se **reversa el saldo** íntegro a la cuenta (`422 Unprocessable Entity`).
+   - Si ocurre `GatewayTimeout` o `RetryableException`, se marca como `TIMEOUT` y **NO se reversa el saldo** para evitar pérdidas financieras (`202 Accepted`), enviándola a revisión/conciliación.
+6. **Módulo de Consulta y Conciliación:**
+   - `GET /api/v1/servicios/transacciones/{referencia}`: Consulta el estado de transacciones en curso o en `TIMEOUT`.
+   - `POST /api/v1/servicios/transacciones/{referencia}/conciliar`: Permite conciliar operaciones indeterminadas y aplicar reembolsos cuando proceda.
+
+## 3. Endpoints REST
+* `POST /api/v1/servicios/pagar` - Procesa el pago debitando de la cuenta del cliente e interactuando con GestoPago.
+* `GET /api/v1/servicios/transacciones/{referencia}` - Consulta el estado actual de una transacción.
+* `POST /api/v1/servicios/transacciones/{referencia}/conciliar` - Concilia una transacción en estado TIMEOUT o PENDIENTE.
+
+## 4. Análisis de Riesgos y Escenarios de Fallo
+1. **Timeout con el Proveedor Externo:** Mitigado manteniendo el saldo en retención preventiva (`TIMEOUT`) y derivándolo a conciliación; nunca se asume fallo inmediato.
+2. **Doble Clic en Frontend:** Mitigado por filtro de ventana temporal (60 segundos) y llaves de idempotencia.
+3. **Concurrencia de Múltiples Solicitudes Simultáneas:** Mitigado por bloqueo pesimista en base de datos (`PESSIMISTIC_WRITE`).
+4. **Manipulación de Montos:** Mitigado cotejando el importe enviado contra el precio oficial del catálogo en base de datos.
+5. **Suplantación de Identidad:** Mitigado verificando la relación entre el JWT del usuario en sesión y la titularidad de la cuenta.
+
+## 5. Pruebas Realizadas 
+
+### 5.1 Catálogo de Servicios y Productos en Base de Datos (PostgreSQL)
+El catálogo de productos se encuentra sincronizado físicamente en la base de datos PostgreSQL, garantizando la persistencia y permitiendo la validación cruzada de IDs, categorías y montos permitidos.
+
+![alt text](image-11.png)
+
+---
+
+### 5.2 Petición de Pago de Servicio (¡Recórcholis! $640.00)
+Operación ejecutada con autenticación Bearer JWT del cliente titular:
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8080/api/v1/servicios/pagar' \
+  -H 'accept: application/json' \
+  -H 'Authorization: Bearer <TOKEN_JWT_DEL_CLIENTE>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "numeroCuenta": "58758505556076",
+  "idServicio": "¡Recorcholis!", 
+  "idProducto": "36cc2e07-74ed-420e-842e-7a7651721127",
+  "referenciaServicio": "1234567890",
+  "monto": 640.00,
+  "referenciaCliente": "RECORCHOLIS-001"
+}'
+```
+
+---
+
+### 5.3 Respuesta de la Pasarela GestoPago y Manejo Resiliente (HTTP 422)
+GestoPago recibió la solicitud y retornó el XML de respuesta con el estado del carrier:
+```xml
+<?xml version='1.0' encoding='UTF-8'?>
+<AUTORIZACION>
+  <NUM_AUTORIZACION>-1</NUM_AUTORIZACION>
+  <CODIGO_MENSAJE>03</CODIGO_MENSAJE>
+  <MENSAJE>Por el momento el carrier no responde, favor de intentar mas tarde.</MENSAJE>
+</AUTORIZACION>
+```
+
+El backend capturó y parseó la respuesta del proveedor, traduciéndola en la respuesta HTTP correspondiente y **reversando automáticamente el saldo debitado de vuelta a la cuenta del cliente**:
+
+```json
+{
+  "folio": "RECORCHOLIS-001",
+  "estatus": "FALLIDA",
+  "mensaje": "Por el momento el carrier no responde, favor de intentar mas tarde.",
+  "idServicio": "¡Recorcholis!",
+  "idProducto": "36cc2e07-74ed-420e-842e-7a7651721127",
+  "monto": 640,
+  "saldoActualizado": 1050,
+  "fechaOperacion": "2026-10-29T11:36:47.0167627",
+  "folioProveedor": null
+}
+```
+![alt text](image-12.png)
+
+---
+
+### 5.4 Registro y Trazabilidad en Base de Datos (transacciones_servicio)
+Cada operación queda registrada en la tabla `transacciones_servicio` con su estado final (`FALLIDA`), mensaje original del switch y auditoría para fines de conciliación contable.
+
+![alt text](image-13.png)
+
+---
+
+### 5.5 Endpoint de Conciliación de Transacciones
+Para operaciones que queden en estado `TIMEOUT` o `PENDIENTE`, se cuenta con el endpoint de conciliación que permite asentar el folio definitivo del proveedor o reembolsar el saldo congelado:
+* `POST /api/v1/servicios/transacciones/{referencia}/conciliar`
+
+---
 **Conclusión:** La solución implementada es una API REST escalable, fuertemente tipada y con una arquitectura segura que cumple íntegramente con los criterios funcionales solicitados en el proyecto integrador.

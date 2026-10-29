@@ -25,7 +25,7 @@ public class ProductoController {
      *
      * @return {@link ProductListResponse} con código 200 si es exitoso
      */
-    @GetMapping(value = "/productos", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = {"/productos", "/api/v1/productos"}, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductListResponse> obtenerProductos() {
         return new ResponseEntity<>(productoService.obtenerListaProductos(), HttpStatus.OK);
     }

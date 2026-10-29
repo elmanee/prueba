@@ -23,7 +23,11 @@ public interface GestoPagoProductClient {
      * @param authorization Header de autorización con formato {@code Bearer <token>}
      * @return Respuesta con la lista de productos
      */
-    @GetMapping(value = "/sistema/service/getProductList.do", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(
+        value = "/sistema/service/getProductList.do",
+        consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE, "*/*"},
+        produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE, "*/*"}
+    )
     ProductListResponse getProductList(
             @RequestHeader("Authorization") String authorization
     );
