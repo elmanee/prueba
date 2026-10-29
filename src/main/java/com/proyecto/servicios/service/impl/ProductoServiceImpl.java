@@ -4,6 +4,7 @@ import com.proyecto.servicios.client.GestoPagoProductClient;
 import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
 import com.proyecto.servicios.exception.IntegracionExternaException;
 import com.proyecto.servicios.model.catalogo.ProductListResponse;
+import com.proyecto.servicios.model.catalogo.ProductoItem;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.ProductoService;
 import feign.FeignException;
@@ -87,13 +88,10 @@ public class ProductoServiceImpl implements ProductoService {
                 productoRepository.deleteAllInBatch();
 
                 // 2. Mapeamos la lista completa. 
-                // Usamos UUID.randomUUID() como ID primario porque si la API de GestoPago 
-                // devuelve IDs nulos o duplicados (ej. idproducto="0" para todos), JPA sobrescribirá 
-                // el mismo registro 901 veces y solo guardará 1.
                 List<GestoPagoProducto> entidades = response.getDatos().stream()
                         .map(item -> GestoPagoProducto.builder()
-                                .id(java.util.UUID.randomUUID().toString()) // ID único garantizado
-                                .nombre(item.getNombre())
+                                .id(item.getId() != null && !item.getId().isBlank() ? item.getId() : java.util.UUID.randomUUID().toString())
+                                .nombre(item.getNombre() != null ? item.getNombre() : "Sin nombre")
                                 .descripcion(item.getDescripcion())
                                 .precio(item.getPrecio())
                                 .categoria(item.getCategoria())
@@ -105,6 +103,24 @@ public class ProductoServiceImpl implements ProductoService {
                 // 3. Guardamos la lista masivamente
                 productoRepository.saveAll(entidades);
                 log.info("Persistidos {} productos en la base de datos PostgreSQL.", entidades.size());
+            } else {
+                // Si la API remota vino vacía o en formato no parseado, devolver los productos locales en base de datos
+                List<GestoPagoProducto> locales = productoRepository.findAll();
+                if (!locales.isEmpty()) {
+                    List<ProductoItem> items = locales.stream()
+                            .map(p -> ProductoItem.builder()
+                                    .id(p.getId())
+                                    .nombre(p.getNombre())
+                                    .descripcion(p.getDescripcion())
+                                    .precio(p.getPrecio())
+                                    .categoria(p.getCategoria())
+                                    .disponible(p.getDisponible())
+                                    .build())
+                            .collect(Collectors.toList());
+                    response.setDatos(items);
+                    response.setCodigo(0);
+                    response.setMensaje("Catálogo cargado desde base de datos local (" + items.size() + " productos)");
+                }
             }
 
             log.info("Consulta de lista de productos GestoPago finalizada. totalProductos={}",

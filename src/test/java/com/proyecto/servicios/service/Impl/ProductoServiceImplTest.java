@@ -1,4 +1,6 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
+
+import com.proyecto.servicios.repository.gestopago.GestoPagoProductoRepository;
 
 import com.proyecto.servicios.client.GestoPagoProductClient;
 import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
@@ -42,10 +44,13 @@ class ProductoServiceImplTest {
 
     @Mock
     private GestoPagoTokenService gestoPagoTokenService;
+    
+    @Mock
+    private GestoPagoProductoRepository productoRepository;
 
-    @InjectMocks
+
+@InjectMocks
     private ProductoServiceImpl productoService;
-
     private static final Integer ID_DISTRIBUIDOR = 83;
     private static final String CODIGO_DISPOSITIVO = "GPS83-TPV-17";
     private static final String TOKEN_ACTIVO = "token-jwt-activo-123";
@@ -55,8 +60,10 @@ class ProductoServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        productoService = new ProductoServiceImpl(gestoPagoProductClient, gestoPagoTokenService, productoRepository);
         ReflectionTestUtils.setField(productoService, "idDistribuidor", ID_DISTRIBUIDOR);
         ReflectionTestUtils.setField(productoService, "codigoDispositivo", CODIGO_DISPOSITIVO);
+
 
         tokenMock = new GestoPagoToken();
         tokenMock.setToken(TOKEN_ACTIVO);

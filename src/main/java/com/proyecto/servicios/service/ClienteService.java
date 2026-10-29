@@ -1,14 +1,18 @@
 package com.proyecto.servicios.service;
 
-import com.proyecto.servicios.dto.ClienteUpdateDTO;
 import com.proyecto.servicios.dto.ClienteRegistroDTO;
+import com.proyecto.servicios.dto.ClienteResponseDTO;
+import com.proyecto.servicios.dto.ClienteSearchRequestDTO;
+import com.proyecto.servicios.dto.ClienteUpdateDTO;
 import com.proyecto.servicios.entity.Cliente;
 import com.proyecto.servicios.entity.Cuenta;
+import com.proyecto.servicios.entity.Domicilio;
 import com.proyecto.servicios.entity.Usuario;
+import com.proyecto.servicios.exception.*;
 import com.proyecto.servicios.repository.ClienteRepository;
+import com.proyecto.servicios.repository.ClienteSpecification;
 import com.proyecto.servicios.repository.CuentaRepository;
 import com.proyecto.servicios.repository.UsuarioRepository;
-import com.proyecto.servicios.exception.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,7 +23,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * Servicio de negocio para la administración de clientes.
+ * Devuelve siempre DTOs de respuesta, nunca entidades JPA directamente.
+ */
 @Service
 @RequiredArgsConstructor
 public class ClienteService {
@@ -29,20 +38,25 @@ public class ClienteService {
     private final CuentaRepository cuentaRepository;
     private final PasswordEncoder passwordEncoder;
 
+    // -------------------------------------------------------------------------
+    // Registro
+    // -------------------------------------------------------------------------
+
     @Transactional
-    public Cliente registrarCliente(ClienteRegistroDTO dto) {
+    public ClienteResponseDTO registrarCliente(ClienteRegistroDTO dto) {
         if (Period.between(dto.getFechaNacimiento(), LocalDate.now()).getYears() < 18) {
             throw new IllegalArgumentException("El cliente debe ser mayor de 18 años.");
         }
 
-        String passwordRegex = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$";
-        if (dto.getRawPassword() == null || !dto.getRawPassword().matches(passwordRegex)) {
-            throw new IllegalArgumentException("La contraseña debe tener mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial.");
+        if (clienteRepository.existsByCurp(dto.getCurp())) {
+            throw new CurpDuplicadaException("El CURP ya existe: " + dto.getCurp());
         }
-
-        if (clienteRepository.existsByCurp(dto.getCurp())) throw new CurpDuplicadaException("El CURP ya existe.");
-        if (clienteRepository.existsByRfc(dto.getRfc())) throw new RfcDuplicadaException("El RFC ya existe.");
-        if (usuarioRepository.existsByCorreo(dto.getCorreo())) throw new ClienteYaRegistradoException("El correo ya está registrado.");
+        if (clienteRepository.existsByRfc(dto.getRfc())) {
+            throw new RfcDuplicadaException("El RFC ya existe: " + dto.getRfc());
+        }
+        if (usuarioRepository.existsByCorreo(dto.getCorreo())) {
+            throw new ClienteYaRegistradoException("El correo ya está registrado: " + dto.getCorreo());
+        }
 
         Cliente nuevoCliente = Cliente.builder()
                 .nombre(dto.getNombre())
@@ -62,7 +76,7 @@ public class ClienteService {
                 .ingresoMensual(dto.getIngresoMensual())
                 .activo(true)
                 .build();
-        
+
         nuevoCliente = clienteRepository.save(nuevoCliente);
 
         Usuario nuevoUsuario = Usuario.builder()
@@ -75,35 +89,38 @@ public class ClienteService {
 
         Cuenta nuevaCuenta = Cuenta.builder()
                 .cliente(nuevoCliente)
-                .numeroCuenta(String.valueOf((long)(Math.random() * 100000000000000L)))
+                .numeroCuenta(String.valueOf((long) (Math.random() * 100_000_000_000_000L)))
                 .moneda("MXN")
                 .saldo(new BigDecimal("10.00"))
                 .tipoCuenta("DEBITO")
                 .build();
         cuentaRepository.save(nuevaCuenta);
 
-        return nuevoCliente;
+        return toDTO(nuevoCliente, dto.getCorreo());
     }
 
-    public List<Cliente> obtenerClientesActivos() {
-        return clienteRepository.findByActivoTrue();
+    // -------------------------------------------------------------------------
+    // Búsqueda dinámica — UN ÚNICO endpoint para múltiples criterios
+    // -------------------------------------------------------------------------
+
+    public List<ClienteResponseDTO> buscar(ClienteSearchRequestDTO req) {
+        return clienteRepository.findAll(ClienteSpecification.fromSearchRequest(req))
+                .stream()
+                .map(c -> toDTO(c, c.getUsuario() != null ? c.getUsuario().getCorreo() : null))
+                .collect(Collectors.toList());
     }
 
-    public Cliente buscarPorId(Long id) {
-        return clienteRepository.findById(id).orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado"));
-    }
-
-    public Cliente buscarPorCurp(String curp) {
-        return clienteRepository.findByCurp(curp).orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado por CURP"));
-    }
-
-    public Cliente buscarPorRfc(String rfc) {
-        return clienteRepository.findByRfc(rfc).orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado por RFC"));
-    }
+    // -------------------------------------------------------------------------
+    // Baja lógica
+    // -------------------------------------------------------------------------
 
     @Transactional
-    public void darDeBaja(Long id) {
-        Cliente cliente = buscarPorId(id);
+    public void darDeBaja(ClienteSearchRequestDTO req) {
+        if (req.getId() == null) {
+            throw new IllegalArgumentException("Se debe proporcionar el id del cliente para darlo de baja.");
+        }
+        Cliente cliente = clienteRepository.findById(req.getId())
+                .orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado con id: " + req.getId()));
         cliente.setActivo(false);
         if (cliente.getUsuario() != null) {
             cliente.getUsuario().setEstatus("INACTIVO");
@@ -111,29 +128,18 @@ public class ClienteService {
         clienteRepository.save(cliente);
     }
 
-    public Cliente buscarPorCorreo(String correo) {
-        return clienteRepository.findByUsuarioCorreo(correo)
-                .orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado por correo"));
-    }
-
-    public List<Cuenta> obtenerCuentasActivas() {
-        return cuentaRepository.findByActivoTrue();
-    }
-
-    public BigDecimal obtenerSaldoCuenta(String numeroCuenta) {
-        Cuenta cuenta = cuentaRepository.findByNumeroCuenta(numeroCuenta)
-                .orElseThrow(() -> new CuentaNoEncontradaException("Cuenta no encontrada"));
-        return cuenta.getSaldo();
-    }
-
-    public List<Cliente> buscarPorRangoFechas(LocalDateTime inicio, LocalDateTime fin) {
-        return clienteRepository.findByCreadoEnBetween(inicio, fin);
-    }
+    // -------------------------------------------------------------------------
+    // Actualización
+    // -------------------------------------------------------------------------
 
     @Transactional
-    public Cliente actualizarCliente(Long id, ClienteUpdateDTO dto) {
-        Cliente cliente = buscarPorId(id);
-        
+    public ClienteResponseDTO actualizarCliente(ClienteSearchRequestDTO busqueda, ClienteUpdateDTO dto) {
+        if (busqueda.getId() == null) {
+            throw new IllegalArgumentException("Se debe proporcionar el id del cliente a actualizar.");
+        }
+        Cliente cliente = clienteRepository.findById(busqueda.getId())
+                .orElseThrow(() -> new ClienteNoEncontradoException("Cliente no encontrado con id: " + busqueda.getId()));
+
         if (dto.getNombre() != null) cliente.setNombre(dto.getNombre());
         if (dto.getSegundoNombre() != null) cliente.setSegundoNombre(dto.getSegundoNombre());
         if (dto.getApellidoPaterno() != null) cliente.setApellidoPaterno(dto.getApellidoPaterno());
@@ -154,15 +160,16 @@ public class ClienteService {
             cliente.setFechaNacimiento(dto.getFechaNacimiento());
         }
 
-        if (dto.getCorreo() != null && cliente.getUsuario() != null && !cliente.getUsuario().getCorreo().equals(dto.getCorreo())) {
+        if (dto.getCorreo() != null && cliente.getUsuario() != null
+                && !cliente.getUsuario().getCorreo().equals(dto.getCorreo())) {
             if (usuarioRepository.existsByCorreo(dto.getCorreo())) {
-                throw new ClienteYaRegistradoException("El correo ya está registrado.");
+                throw new ClienteYaRegistradoException("El correo ya está registrado: " + dto.getCorreo());
             }
             cliente.getUsuario().setCorreo(dto.getCorreo());
         }
 
         if (dto.getCalle() != null || dto.getNumeroExterior() != null || dto.getColonia() != null) {
-            com.proyecto.servicios.entity.Domicilio domicilio = new com.proyecto.servicios.entity.Domicilio();
+            Domicilio domicilio = new Domicilio();
             domicilio.setCliente(cliente);
             domicilio.setCalle(dto.getCalle());
             domicilio.setNumeroExterior(dto.getNumeroExterior());
@@ -174,12 +181,42 @@ public class ClienteService {
             domicilio.setPais(dto.getPais());
 
             if (cliente.getDomicilios() == null) {
-                cliente.setDomicilios(java.util.List.of(domicilio));
+                cliente.setDomicilios(List.of(domicilio));
             } else {
                 cliente.getDomicilios().add(domicilio);
             }
         }
 
-        return clienteRepository.save(cliente);
+        Cliente actualizado = clienteRepository.save(cliente);
+        String correo = actualizado.getUsuario() != null ? actualizado.getUsuario().getCorreo() : null;
+        return toDTO(actualizado, correo);
+    }
+
+    // -------------------------------------------------------------------------
+    // Mapeo entidad → DTO
+    // -------------------------------------------------------------------------
+
+    private ClienteResponseDTO toDTO(Cliente c, String correo) {
+        return ClienteResponseDTO.builder()
+                .id(c.getId())
+                .nombre(c.getNombre())
+                .segundoNombre(c.getSegundoNombre())
+                .apellidoPaterno(c.getApellidoPaterno())
+                .apellidoMaterno(c.getApellidoMaterno())
+                .curp(c.getCurp())
+                .rfc(c.getRfc())
+                .fechaNacimiento(c.getFechaNacimiento())
+                .sexo(c.getSexo())
+                .nacionalidad(c.getNacionalidad())
+                .estadoCivil(c.getEstadoCivil())
+                .telefonoMovil(c.getTelefonoMovil())
+                .telefonoAlternativo(c.getTelefonoAlternativo())
+                .ocupacion(c.getOcupacion())
+                .empresa(c.getEmpresa())
+                .ingresoMensual(c.getIngresoMensual())
+                .activo(c.getActivo())
+                .creadoEn(c.getCreadoEn())
+                .correo(correo)
+                .build();
     }
 }
